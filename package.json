@@ -1,0 +1,13 @@
+{
+  "name": "anti-theft-guard",
+  "version": "1.0.0",
+  "description": "WebSocket server and dashboard for the ESP32 Anti-Theft Guard",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}

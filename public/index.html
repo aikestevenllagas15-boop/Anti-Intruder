@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f172a">
+<title>Anti-Theft Guard</title>
+<style>
+:root{--bg:#f1f5f9;--card:#ffffff;--text:#0f172a;--muted:#64748b;--border:#e2e8f0;
+--green:#16a34a;--red:#dc2626;--amber:#d97706;--slate:#64748b;--blue:#2563eb;
+--shadow:0 1px 2px rgba(15,23,42,.06),0 6px 18px rgba(15,23,42,.06)}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1020;--card:#141b2e;--text:#e5e9f2;--muted:#94a3b8;--border:#223049;--shadow:none}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+body.alarm{animation:flash 1s infinite}
+@keyframes flash{0%,100%{background:var(--bg)}50%{background:#7f1d1d}}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.55)}50%{box-shadow:0 0 0 16px rgba(220,38,38,0)}}
+@media (prefers-reduced-motion:reduce){body.alarm{animation:none}.hero.alarm{animation:none!important}}
+.wrap{max-width:560px;margin:0 auto;padding:16px 16px 40px}
+.ic{width:20px;height:20px;flex:none}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px}
+.logo{width:36px;height:36px;border-radius:10px;background:var(--blue);color:#fff;display:grid;place-items:center}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;font-size:12px;font-weight:600;background:var(--card);border:1px solid var(--border);color:var(--muted)}
+.pill .ic{width:14px;height:14px}
+.pill.live{color:var(--green)}
+.hero{border-radius:18px;padding:22px 18px;color:#fff;text-align:center;box-shadow:var(--shadow);background:linear-gradient(135deg,#475569,#334155)}
+.hero .big{width:56px;height:56px;margin:0 auto 8px;display:block}
+.hero h1{margin:0;font-size:22px;letter-spacing:.02em}
+.hero p{margin:6px 0 0;font-size:14px;opacity:.9}
+.hero.ok{background:linear-gradient(135deg,#16a34a,#15803d)}
+.hero.alarm{background:linear-gradient(135deg,#dc2626,#991b1b);animation:pulse 1s infinite}
+.hero.off{background:linear-gradient(135deg,#64748b,#475569)}
+.hero button{margin:14px 5px 0;background:#fff;color:#991b1b;border:0}
+h2{font-size:12px;color:var(--muted);margin:22px 0 8px;text-transform:uppercase;letter-spacing:.08em}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;box-shadow:var(--shadow)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.left{display:flex;align-items:center;gap:10px;min-width:0}
+.name{font-weight:600}
+.sub{font-size:12px;color:var(--muted);margin-top:2px}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;font-size:12px;font-weight:700;color:#fff;white-space:nowrap}
+.badge .ic{width:14px;height:14px}
+.bar{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+button:active{transform:scale(.98)}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.arm{background:var(--green);border-color:var(--green);color:#fff}
+button.dis{background:var(--red);border-color:var(--red);color:#fff}
+button.big{padding:18px 10px;font-size:16px;letter-spacing:.04em}
+button.big .ic{width:22px;height:22px}
+.card .bar{margin-top:12px}
+.alerts{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.alerts p{margin:2px 0 0;font-size:12px;color:var(--muted)}
+.alerts button{background:var(--blue);border-color:var(--blue);color:#fff}
+.alerts button.ghost{background:var(--card);color:var(--text);border-color:var(--border)}
+.ev{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);align-items:flex-start}
+.ev:last-child{border-bottom:0}
+.ev .dot{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:#fff;flex:none}
+.ev b{font-size:14px}
+.ev small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.empty{color:var(--muted);font-size:14px;padding:6px 0;text-align:center}
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#1e293b;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;display:none;z-index:9;box-shadow:0 6px 20px rgba(0,0,0,.3)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="logo" id="logo"></span>Anti-Theft Guard</div>
+    <span class="pill" id="conn"></span>
+  </header>
+
+  <div class="hero off" id="hero"></div>
+
+  <h2>Alerts on this device</h2>
+  <div class="card" id="alerts"></div>
+
+  <h2>Control</h2>
+  <div class="bar">
+    <button class="arm big" data-act="arm-all" id="armAll"></button>
+    <button class="dis big" data-act="dis-all" id="disAll"></button>
+  </div>
+
+  <h2>Locations</h2>
+  <div id="locations"></div>
+
+  <h2>History</h2>
+  <div class="card" id="history"></div>
+</div>
+<div id="toast"></div>
+
+<script>
+const ICONS = {
+  shield:'<path d="M12 2l8 3v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11V5z"/>',
+  shieldcheck:'<path d="M12 2l8 3v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/>',
+  shieldalert:'<path d="M12 2l8 3v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11V5z"/><path d="M12 8v4M12 16h.01"/>',
+  shieldoff:'<path d="M12 2l8 3v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11V5z"/><path d="M4 4l16 16"/>',
+  lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>',
+  unlock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 017.5-2"/>',
+  alert:'<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>',
+  pin:'<path d="M12 21s7-6.2 7-11a7 7 0 10-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+  bell:'<path d="M6 8a6 6 0 1112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 003.4 0"/>',
+  belloff:'<path d="M6 8a6 6 0 1112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 003.4 0"/><path d="M3 3l18 18"/>',
+  volume:'<path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13"/>',
+  wifi:'<path d="M5 12.5a10 10 0 0114 0M8.5 16a5 5 0 017 0"/><circle cx="12" cy="19.5" r="1"/>',
+  wifioff:'<path d="M5 12.5a10 10 0 014-2.6M8.5 16a5 5 0 017 0"/><circle cx="12" cy="19.5" r="1"/><path d="M3 3l18 18"/>'
+};
+const ic=(n,c)=>'<svg class="ic '+(c||"")+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+ICONS[n]+'</svg>';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ago=t=>{const s=Math.floor((Date.now()-new Date(t).getTime())/1000);if(s<10)return"just now";if(s<60)return s+"s ago";const m=Math.floor(s/60);if(m<60)return m+" min ago";const h=Math.floor(m/60);return h<24?h+" h ago":new Date(t).toLocaleDateString();};
+
+let ws, connected=false, data={locations:[],history:[]};
+let audioOn=false, silenced=false, alarming=false, ctx=null, siren=null, sirenTimer=null, vibTimer=null, wakeLock=null;
+const canVibrate=("vibrate" in navigator);
+
+/* ---------- alarm sound + vibration ---------- */
+function startSiren(){
+  if(!audioOn||silenced||siren) return;
+  try{
+    ctx.resume();
+    const osc=ctx.createOscillator(), g=ctx.createGain();
+    osc.type="sawtooth"; g.gain.value=0.25;
+    osc.connect(g); g.connect(ctx.destination); osc.start();
+    let hi=false;
+    const tick=()=>{osc.frequency.setValueAtTime(hi?2200:1200,ctx.currentTime);hi=!hi;};
+    tick(); sirenTimer=setInterval(tick,350); siren=osc;
+  }catch(e){}
+  if(canVibrate){
+    const pat=()=>navigator.vibrate([500,150,500,150,500]);
+    pat(); vibTimer=setInterval(pat,1700);
+  }
+}
+function stopSiren(){
+  clearInterval(sirenTimer); clearInterval(vibTimer); sirenTimer=vibTimer=null;
+  try{ if(siren) siren.stop(); }catch(e){}
+  siren=null;
+  if(canVibrate) navigator.vibrate(0);
+}
+async function lockScreen(){ try{ wakeLock=await navigator.wakeLock.request("screen"); }catch(e){} }
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"&&audioOn) lockScreen(); });
+
+async function enableAlerts(){
+  try{
+    ctx=new (window.AudioContext||window.webkitAudioContext)();
+    await ctx.resume();
+    const o=ctx.createOscillator(), g=ctx.createGain(); g.gain.value=0.15;
+    o.frequency.value=880; o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime+0.15);
+  }catch(e){ toast("Sound is not supported in this browser"); return; }
+  if(canVibrate) navigator.vibrate(80);
+  try{ if("Notification" in window && Notification.permission==="default") Notification.requestPermission(); }catch(e){}
+  lockScreen();
+  audioOn=true;
+  if(alarming) startSiren();
+  render();
+}
+function testAlarm(){
+  if(!audioOn) return;
+  const was=!!siren; startSiren();
+  if(!was) setTimeout(()=>{ if(!alarming) stopSiren(); },1800);
+}
+function silence(){ silenced=true; stopSiren(); render(); }
+function notify(names){
+  try{ if("Notification" in window && Notification.permission==="granted")
+    new Notification("INTRUSION DETECTED",{body:"At "+names,tag:"guard-alarm",requireInteraction:true}); }catch(e){}
+}
+function updateAlarm(list){
+  const on=list.length>0;
+  document.body.classList.toggle("alarm",on);
+  if(on&&!alarming){ alarming=true; silenced=false; notify(list.map(l=>l.name).join(", ")); startSiren(); }
+  else if(!on&&alarming){ alarming=false; silenced=false; stopSiren(); }
+}
+
+/* ---------- UI ---------- */
+function toast(t){const e=$("toast");e.textContent=t;e.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display="none",2500);}
+function sendCmd(loc,cmd){
+  if(!ws||ws.readyState!==1){toast("Not connected to server");return;}
+  ws.send(JSON.stringify({type:"cmd",location:loc,cmd:cmd}));
+}
+const STATE={
+  armed:["ARMED","var(--green)","lock"], disarmed:["DISARMED","var(--slate)","unlock"],
+  alarm:["ALARM","var(--red)","alert"], unknown:["UNKNOWN","var(--slate)","shield"]
+};
+
+function render(){
+  $("logo").innerHTML=ic("shield");
+  $("conn").className="pill"+(connected?" live":"");
+  $("conn").innerHTML=ic(connected?"wifi":"wifioff")+(connected?"Live":"Reconnecting");
+  $("armAll").innerHTML=ic("lock")+"ARM";
+  $("disAll").innerHTML=ic("unlock")+"DISARM";
+
+  const online=data.locations.filter(l=>l.online);
+  const alarmLocs=online.filter(l=>l.state==="alarm");
+  const armed=online.filter(l=>l.state==="armed");
+  const h=$("hero");
+  if(alarmLocs.length){
+    h.className="hero alarm";
+    h.innerHTML=ic("shieldalert","big")+"<h1>INTRUSION DETECTED</h1><p>"+esc(alarmLocs.map(l=>l.name).join(", "))+"</p>"+
+      "<div>"+'<button data-act="dis-all">'+ic("unlock")+"DISARM</button>"+(silenced?"":'<button data-act="silence">'+ic("belloff")+"Silence here</button>")+"</div>";
+  }else if(!online.length){
+    h.className="hero off";
+    h.innerHTML=ic("shieldoff","big")+"<h1>NO DEVICE ONLINE</h1><p>Waiting for the ESP32 to connect</p>";
+  }else if(armed.length){
+    h.className="hero ok";
+    h.innerHTML=ic("shieldcheck","big")+"<h1>PROTECTED</h1><p>"+armed.length+" of "+online.length+" location"+(online.length>1?"s":"")+" armed</p>";
+  }else{
+    h.className="hero off";
+    h.innerHTML=ic("shield","big")+"<h1>DISARMED</h1><p>Press ARM to start guarding</p>";
+  }
+
+  const a=$("alerts");
+  if(!audioOn){
+    a.innerHTML='<div class="alerts"><div><div class="name">Sound and vibration</div><p>Tap once to allow the alarm on this device</p></div>'+
+      '<button data-act="enable">'+ic("bell")+"Enable</button></div>";
+  }else{
+    a.innerHTML='<div class="alerts"><div><div class="name">'+ic("volume")+' Alerts on</div><p>Siren'+(canVibrate?" and vibration":" (vibration not supported here)")+
+      ' when an intrusion is detected. Keep this page open.</p></div><button class="ghost" data-act="test">Test</button></div>';
+  }
+
+  const box=$("locations");
+  box.innerHTML=data.locations.length?data.locations.map(l=>{
+    const s=l.online?(STATE[l.state]||STATE.unknown):["OFFLINE","var(--slate)","wifioff"];
+    return '<div class="card"><div class="row"><div class="left">'+ic("pin")+'<div><div class="name">'+esc(l.name)+
+      '</div><div class="sub">Last seen '+ago(l.lastSeen)+'</div></div></div>'+
+      '<span class="badge" style="background:'+s[1]+'">'+ic(s[2])+s[0]+'</span></div>'+
+      '<div class="bar"><button class="arm" '+(l.online?"":"disabled")+' data-act="arm" data-n="'+esc(l.name)+'">'+ic("lock")+'Arm</button>'+
+      '<button class="dis" '+(l.online?"":"disabled")+' data-act="dis" data-n="'+esc(l.name)+'">'+ic("unlock")+'Disarm</button></div></div>';
+  }).join(""):'<div class="card empty">No devices yet</div>';
+
+  const hist=$("history");
+  hist.innerHTML=data.history.length?data.history.map(e=>{
+    const k=e.kind==="alert"?["INTRUSION","var(--red)","alert"]:e.kind==="armed"?["Armed","var(--green)","lock"]:["Disarmed","var(--slate)","unlock"];
+    const extra=(e.kind==="alert"&&e.distance!=null)?" - reading "+e.distance+" cm, baseline "+e.baseline+" cm":"";
+    return '<div class="ev"><span class="dot" style="background:'+k[1]+'">'+ic(k[2])+'</span><div><b>'+k[0]+'</b> at '+esc(e.location)+
+      '<small>'+ago(e.time)+" - "+new Date(e.time).toLocaleString()+esc(extra)+'</small></div></div>';
+  }).join(""):'<div class="empty">No events yet</div>';
+
+  document.title=alarmLocs.length?"ALARM - Anti-Theft Guard":"Anti-Theft Guard";
+  updateAlarm(alarmLocs);
+}
+
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-act]"); if(!b||b.disabled) return;
+  const act=b.dataset.act;
+  if(act==="arm-all") sendCmd("*","arm");
+  else if(act==="dis-all") sendCmd("*","disarm");
+  else if(act==="arm") sendCmd(b.dataset.n,"arm");
+  else if(act==="dis") sendCmd(b.dataset.n,"disarm");
+  else if(act==="enable") enableAlerts();
+  else if(act==="test") testAlarm();
+  else if(act==="silence") silence();
+});
+
+function connect(){
+  const proto=location.protocol==="https:"?"wss":"ws";
+  const key=new URLSearchParams(location.search).get("key");
+  ws=new WebSocket(proto+"://"+location.host+"/dashboard"+(key?"?key="+encodeURIComponent(key):""));
+  ws.onopen=()=>{connected=true;render();};
+  ws.onmessage=ev=>{
+    const m=JSON.parse(ev.data);
+    if(m.type==="snapshot"){data=m;render();}
+    else if(m.type==="notice"){toast(m.text);}
+  };
+  ws.onclose=()=>{connected=false;render();setTimeout(connect,2000);};
+}
+render();
+connect();
+setInterval(render,30000);
+</script>
+</body>
+</html>

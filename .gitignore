@@ -1,0 +1,7 @@
+node_modules/
+firmware/
+events.json
+.env
+.env.*
+!.env.example
+*.log
