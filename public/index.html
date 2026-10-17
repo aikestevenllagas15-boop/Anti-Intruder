@@ -121,9 +121,10 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"
 const ago=t=>{const s=Math.floor((Date.now()-new Date(t).getTime())/1000);if(s<10)return"just now";if(s<60)return s+"s ago";const m=Math.floor(s/60);if(m<60)return m+" min ago";const h=Math.floor(m/60);return h<24?h+" h ago":new Date(t).toLocaleDateString();};
 
 let ws, connected=false, data={locations:[],history:[]};
-let audioOn=false, silenced=false, alarming=false, ctx=null, siren=null, sirenTimer=null, vibTimer=null, wakeLock=null;
+let audioOn=false, silenced=false, alarming=false, ctx=null, siren=null, sirenTimer=null, vibTimer=null, wakeLock=null, alarmAudio=null, soundPlaying=false;
 let installPrompt=null;
 const canVibrate=("vibrate" in navigator);
+const ALARM_SOUND_URL="https://www.myinstants.com/media/sounds/mama-rene-baterbonia.mp3";
 
 window.addEventListener("beforeinstallprompt",event=>{
   event.preventDefault();
@@ -144,7 +145,25 @@ async function installApp(){
 
 /* ---------- alarm sound + vibration ---------- */
 function startSiren(){
-  if(!audioOn||silenced||siren) return;
+  if(!audioOn||silenced||soundPlaying) return;
+  soundPlaying=true;
+  if(!alarmAudio){
+    alarmAudio=new Audio(ALARM_SOUND_URL);
+    alarmAudio.loop=true;
+    alarmAudio.preload="auto";
+  }
+  alarmAudio.play().catch(()=>{
+    if(!soundPlaying) return;
+    toast("Linked alarm audio unavailable; using built-in siren");
+    startBuiltinSiren();
+  });
+  if(canVibrate){
+    const pat=()=>navigator.vibrate([500,150,500,150,500]);
+    pat(); vibTimer=setInterval(pat,1700);
+  }
+}
+function startBuiltinSiren(){
+  if(!audioOn||silenced||!soundPlaying||siren) return;
   try{
     ctx.resume();
     const osc=ctx.createOscillator(), g=ctx.createGain();
@@ -153,16 +172,17 @@ function startSiren(){
     let hi=false;
     const tick=()=>{osc.frequency.setValueAtTime(hi?2200:1200,ctx.currentTime);hi=!hi;};
     tick(); sirenTimer=setInterval(tick,350); siren=osc;
-  }catch(e){}
-  if(canVibrate){
-    const pat=()=>navigator.vibrate([500,150,500,150,500]);
-    pat(); vibTimer=setInterval(pat,1700);
+  }catch(e){
+    stopSiren();
+    toast("Could not start the alarm sound");
   }
 }
 function stopSiren(){
   clearInterval(sirenTimer); clearInterval(vibTimer); sirenTimer=vibTimer=null;
   try{ if(siren) siren.stop(); }catch(e){}
   siren=null;
+  soundPlaying=false;
+  if(alarmAudio){ alarmAudio.pause(); alarmAudio.currentTime=0; }
   if(canVibrate) navigator.vibrate(0);
 }
 async function lockScreen(){ try{ wakeLock=await navigator.wakeLock.request("screen"); }catch(e){} }
@@ -184,7 +204,7 @@ async function enableAlerts(){
 }
 function testAlarm(){
   if(!audioOn) return;
-  const was=!!siren; startSiren();
+  const was=soundPlaying; startSiren();
   if(!was) setTimeout(()=>{ if(!alarming) stopSiren(); },1800);
 }
 function silence(){ silenced=true; stopSiren(); render(); }
@@ -241,7 +261,7 @@ function render(){
     a.innerHTML='<div class="alerts"><div><div class="name">Sound and vibration</div><p>Tap once to allow the alarm on this device</p></div>'+
       '<button data-act="enable">'+ic("bell")+"Enable</button></div>";
   }else{
-    a.innerHTML='<div class="alerts"><div><div class="name">'+ic("volume")+' Alerts on</div><p>Siren'+(canVibrate?" and vibration":" (vibration not supported here)")+
+    a.innerHTML='<div class="alerts"><div><div class="name">'+ic("volume")+' Alerts on</div><p>MAMA RENE BATERBONIA'+(canVibrate?" and vibration":"")+
       ' when an intrusion is detected. Keep this page open.</p></div><button class="ghost" data-act="test">Test</button></div>';
   }
 
