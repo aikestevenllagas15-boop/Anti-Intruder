@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "Anti-Theft Guard",
+  "short_name": "Anti-Theft",
+  "description": "Monitor and control your connected Anti-Theft Guard devices.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

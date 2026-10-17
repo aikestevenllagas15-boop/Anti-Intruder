@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f172a">
+<meta name="description" content="Monitor and control your connected Anti-Theft Guard devices.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Anti-Theft Guard">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg">
 <title>Anti-Theft Guard</title>
 <style>
 :root{--bg:#f1f5f9;--card:#ffffff;--text:#0f172a;--muted:#64748b;--border:#e2e8f0;
@@ -44,6 +50,8 @@ h2{font-size:12px;color:var(--muted);margin:22px 0 8px;text-transform:uppercase;
 button{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
 button:active{transform:scale(.98)}
 button:disabled{opacity:.4;cursor:not-allowed}
+button.install{display:none;padding:8px 10px;background:var(--blue);border-color:var(--blue);color:#fff;font-size:12px}
+button.install.visible{display:inline-flex}
 button.arm{background:var(--green);border-color:var(--green);color:#fff}
 button.dis{background:var(--red);border-color:var(--red);color:#fff}
 button.big{padding:18px 10px;font-size:16px;letter-spacing:.04em}
@@ -66,7 +74,10 @@ button.big .ic{width:22px;height:22px}
 <div class="wrap">
   <header>
     <div class="brand"><span class="logo" id="logo"></span>Anti-Theft Guard</div>
-    <span class="pill" id="conn"></span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="install" id="installApp" type="button" data-act="install">Install app</button>
+      <span class="pill" id="conn"></span>
+    </div>
   </header>
 
   <div class="hero off" id="hero"></div>
@@ -111,7 +122,25 @@ const ago=t=>{const s=Math.floor((Date.now()-new Date(t).getTime())/1000);if(s<1
 
 let ws, connected=false, data={locations:[],history:[]};
 let audioOn=false, silenced=false, alarming=false, ctx=null, siren=null, sirenTimer=null, vibTimer=null, wakeLock=null;
+let installPrompt=null;
 const canVibrate=("vibrate" in navigator);
+
+window.addEventListener("beforeinstallprompt",event=>{
+  event.preventDefault();
+  installPrompt=event;
+  $("installApp").classList.add("visible");
+});
+window.addEventListener("appinstalled",()=>{
+  installPrompt=null;
+  $("installApp").classList.remove("visible");
+});
+async function installApp(){
+  if(!installPrompt)return;
+  installPrompt.prompt();
+  await installPrompt.userChoice;
+  installPrompt=null;
+  $("installApp").classList.remove("visible");
+}
 
 /* ---------- alarm sound + vibration ---------- */
 function startSiren(){
@@ -248,6 +277,7 @@ document.addEventListener("click",e=>{
   else if(act==="enable") enableAlerts();
   else if(act==="test") testAlarm();
   else if(act==="silence") silence();
+  else if(act==="install") installApp();
 });
 
 function connect(){
