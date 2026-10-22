@@ -52,7 +52,7 @@ h2{font-size:12px;color:var(--muted);margin:22px 0 8px;text-transform:uppercase;
 button{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
 button:active{transform:scale(.98)}
 button:disabled{opacity:.4;cursor:not-allowed}
-button.install{padding:8px 10px;background:var(--blue);border-color:var(--blue);color:#fff;font-size:12px}
+a.download{display:inline-flex;align-items:center;justify-content:center;padding:8px 10px;border-radius:12px;background:var(--blue);border:1px solid var(--blue);color:#fff;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap}
 button.arm{background:var(--green);border-color:var(--green);color:#fff}
 button.dis{background:var(--red);border-color:var(--red);color:#fff}
 button.big{padding:18px 10px;font-size:16px;letter-spacing:.04em}
@@ -84,7 +84,7 @@ button.big .ic{width:22px;height:22px}
   <header>
     <div class="brand"><span class="logo" id="logo"></span>Door Alarm</div>
     <div style="display:flex;align-items:center;gap:8px">
-      <button class="install" id="installApp" type="button" data-act="install">Install app</button>
+      <a class="download" href="/DoorAlarm.apk" download="DoorAlarm.apk">Download APK</a>
       <button id="lockDashboard" type="button" data-act="lock-dashboard" hidden>Lock</button>
       <span class="pill" id="conn"></span>
     </div>
@@ -143,7 +143,6 @@ const ago=t=>{const s=Math.floor((Date.now()-new Date(t).getTime())/1000);if(s<1
 
 let ws, connected=false, authenticated=false, pinRequired=true, dashboardPin=null, data={locations:[],history:[]};
 let audioOn=false, silenced=false, alarming=false, ctx=null, siren=null, sirenTimer=null, vibTimer=null, wakeLock=null, alarmAudio=null, soundPlaying=false;
-let installPrompt=null;
 const canVibrate=("vibrate" in navigator);
 const ALARM_SOUND_URL="https://www.myinstants.com/media/sounds/mama-rene-baterbonia.mp3";
 
@@ -152,32 +151,6 @@ if("serviceWorker" in navigator){
     navigator.serviceWorker.register("/service-worker.js")
       .catch(error=>console.error("Service worker registration failed:",error));
   });
-}
-
-window.addEventListener("beforeinstallprompt",event=>{
-  event.preventDefault();
-  installPrompt=event;
-});
-window.addEventListener("appinstalled",()=>{
-  installPrompt=null;
-  $("installApp").hidden=true;
-});
-if(window.matchMedia("(display-mode: standalone)").matches || navigator.standalone===true){
-  $("installApp").hidden=true;
-}
-async function installApp(){
-  if(installPrompt){
-    installPrompt.prompt();
-    await installPrompt.userChoice;
-    installPrompt=null;
-    return;
-  }
-
-  const isIOS=/iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-    (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
-  toast(isIOS
-    ? 'On iPhone or iPad, tap Share, then "Add to Home Screen".'
-    : 'Open your browser menu (⋮), then choose "Install app" or "Add to Home screen".');
 }
 
 /* ---------- alarm sound + vibration ---------- */
@@ -336,7 +309,6 @@ document.addEventListener("click",e=>{
   else if(act==="enable") enableAlerts();
   else if(act==="test") testAlarm();
   else if(act==="silence") silence();
-  else if(act==="install") installApp();
 });
 
 function showAuthError(message){
