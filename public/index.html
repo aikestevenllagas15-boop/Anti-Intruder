@@ -53,6 +53,7 @@ button{display:inline-flex;align-items:center;justify-content:center;gap:8px;pad
 button:active{transform:scale(.98)}
 button:disabled{opacity:.4;cursor:not-allowed}
 a.download{display:inline-flex;align-items:center;justify-content:center;padding:8px 10px;border-radius:12px;background:var(--blue);border:1px solid var(--blue);color:#fff;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap}
+html.installed-app a.download{display:none}
 button.arm{background:var(--green);border-color:var(--green);color:#fff}
 button.dis{background:var(--red);border-color:var(--red);color:#fff}
 button.big{padding:18px 10px;font-size:16px;letter-spacing:.04em}
@@ -145,6 +146,11 @@ let ws, connected=false, authenticated=false, pinRequired=true, dashboardPin=nul
 let audioOn=false, silenced=false, alarming=false, ctx=null, siren=null, sirenTimer=null, vibTimer=null, wakeLock=null, alarmAudio=null, soundPlaying=false;
 const canVibrate=("vibrate" in navigator);
 const ALARM_SOUND_URL="https://www.myinstants.com/media/sounds/mama-rene-baterbonia.mp3";
+const userAgent=navigator.userAgent;
+const isAndroidWebView=/Android/i.test(userAgent) &&
+  (/\bwv\b/i.test(userAgent) || (/Version\/4\.0/i.test(userAgent) && /Chrome\//i.test(userAgent)));
+const isStandalone=window.matchMedia("(display-mode: standalone)").matches || navigator.standalone===true;
+if(isAndroidWebView || isStandalone) document.documentElement.classList.add("installed-app");
 
 if("serviceWorker" in navigator){
   window.addEventListener("load",()=>{
