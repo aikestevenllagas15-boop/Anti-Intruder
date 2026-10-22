@@ -15,9 +15,6 @@ const DASH_PIN = process.env.DASH_PIN || "";           // optional: requires a P
 const NTFY_TOPIC = process.env.NTFY_TOPIC || "";          // optional phone alerts via ntfy.sh
 const DATA_FILE = path.join(__dirname, "events.json");
 const SETTINGS_FILE = process.env.SETTINGS_FILE || path.join(__dirname, "settings.json");
-const PIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
-const MAX_PIN_ATTEMPTS = 5;
-const pinAttempts = new Map();
 const dashboardPinHash = crypto.createHash("sha256").update(DASH_PIN).digest();
 
 if (DASH_PIN && DASH_PIN.length < 6) {
@@ -217,39 +214,15 @@ dashWss.on("connection", (ws, req) => {
         return;
       }
 
-      const forwardedFor = req.headers["x-forwarded-for"];
-      const clientAddress = (typeof forwardedFor === "string" && forwardedFor.split(",")[0].trim()) ||
-        req.socket.remoteAddress ||
-        "unknown";
-      const now = Date.now();
-      let attempts = pinAttempts.get(clientAddress);
-      if (!attempts || now - attempts.windowStartedAt >= PIN_ATTEMPT_WINDOW_MS) {
-        attempts = { count: 0, windowStartedAt: now };
-        pinAttempts.set(clientAddress, attempts);
-      }
-      if (attempts.count >= MAX_PIN_ATTEMPTS) {
-        const retryMinutes = Math.ceil((PIN_ATTEMPT_WINDOW_MS - (now - attempts.windowStartedAt)) / 60000);
-        ws.send(JSON.stringify({
-          type: "auth-result",
-          ok: false,
-          text: `Too many failed attempts. Try again in about ${retryMinutes} minutes.`,
-        }));
-        return;
-      }
-
       const submittedPinHash = crypto.createHash("sha256").update(m.pin).digest();
       if (!crypto.timingSafeEqual(submittedPinHash, dashboardPinHash)) {
-        attempts.count += 1;
         ws.send(JSON.stringify({
           type: "auth-result",
           ok: false,
-          text: attempts.count >= MAX_PIN_ATTEMPTS
-            ? "Too many failed attempts. Try again in 15 minutes."
-            : "Incorrect PIN. Please try again.",
+          text: "Incorrect PIN. Please try again.",
         }));
         return;
       }
-      pinAttempts.delete(clientAddress);
       ws.authenticated = true;
       ws.send(JSON.stringify({ type: "auth-result", ok: true }));
       ws.send(snapshot());
