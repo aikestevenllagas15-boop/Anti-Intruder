@@ -5,13 +5,26 @@ const express = require("express");
 const http = require("http");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const { WebSocketServer } = require("ws");
 
 const PORT = process.env.PORT || 3000;
 const DEVICE_KEY = process.env.DEVICE_KEY || "guard123"; // must match the ESP32 code
 const DASH_KEY = process.env.DASH_KEY || "";           // optional: protects the dashboard (open /?key=YOURKEY)
+const DASH_PIN = process.env.DASH_PIN || "";           // optional: requires a PIN to view/control the dashboard
 const NTFY_TOPIC = process.env.NTFY_TOPIC || "";          // optional phone alerts via ntfy.sh
 const DATA_FILE = path.join(__dirname, "events.json");
+const PIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const MAX_PIN_ATTEMPTS = 5;
+const pinAttempts = new Map();
+const dashboardPinHash = crypto.createHash("sha256").update(DASH_PIN).digest();
+
+if (DASH_PIN && DASH_PIN.length < 6) {
+  throw new Error("DASH_PIN must be at least 6 characters long");
+}
+if (!DASH_PIN) {
+  console.warn("WARNING: DASH_PIN is not set; dashboard PIN protection is disabled.");
+}
 
 const app = express();
 app.use(express.static(path.join(__dirname, "public")));
@@ -43,7 +56,7 @@ function snapshot() {
 function broadcast() {
   const s = snapshot();
   dashWss.clients.forEach((c) => {
-    if (c.readyState === 1) c.send(s);
+    if (c.readyState === 1 && c.authenticated) c.send(s);
   });
 }
 
@@ -156,10 +169,12 @@ deviceWss.on("connection", (ws) => {
 });
 
 // ---- Dashboard browsers ----
-dashWss.on("connection", (ws) => {
+dashWss.on("connection", (ws, req) => {
   ws.isAlive = true;
+  ws.authenticated = false;
+  ws.pinRequired = Boolean(DASH_PIN);
   ws.on("pong", () => (ws.isAlive = true));
-  ws.send(snapshot());
+  ws.send(JSON.stringify({ type: "auth-required", pinRequired: ws.pinRequired }));
 
   ws.on("message", (data) => {
     let m;
@@ -168,6 +183,55 @@ dashWss.on("connection", (ws) => {
     } catch (e) {
       return;
     }
+    if (!ws.authenticated) {
+      if (m.type !== "auth" || typeof m.pin !== "string") return;
+
+      if (!ws.pinRequired) {
+        ws.authenticated = true;
+        ws.send(JSON.stringify({ type: "auth-result", ok: true }));
+        ws.send(snapshot());
+        return;
+      }
+
+      const forwardedFor = req.headers["x-forwarded-for"];
+      const clientAddress = (typeof forwardedFor === "string" && forwardedFor.split(",")[0].trim()) ||
+        req.socket.remoteAddress ||
+        "unknown";
+      const now = Date.now();
+      let attempts = pinAttempts.get(clientAddress);
+      if (!attempts || now - attempts.windowStartedAt >= PIN_ATTEMPT_WINDOW_MS) {
+        attempts = { count: 0, windowStartedAt: now };
+        pinAttempts.set(clientAddress, attempts);
+      }
+      if (attempts.count >= MAX_PIN_ATTEMPTS) {
+        const retryMinutes = Math.ceil((PIN_ATTEMPT_WINDOW_MS - (now - attempts.windowStartedAt)) / 60000);
+        ws.send(JSON.stringify({
+          type: "auth-result",
+          ok: false,
+          text: `Too many failed attempts. Try again in about ${retryMinutes} minutes.`,
+        }));
+        return;
+      }
+
+      const submittedPinHash = crypto.createHash("sha256").update(m.pin).digest();
+      if (!crypto.timingSafeEqual(submittedPinHash, dashboardPinHash)) {
+        attempts.count += 1;
+        ws.send(JSON.stringify({
+          type: "auth-result",
+          ok: false,
+          text: attempts.count >= MAX_PIN_ATTEMPTS
+            ? "Too many failed attempts. Try again in 15 minutes."
+            : "Incorrect PIN. Please try again.",
+        }));
+        return;
+      }
+      pinAttempts.delete(clientAddress);
+      ws.authenticated = true;
+      ws.send(JSON.stringify({ type: "auth-result", ok: true }));
+      ws.send(snapshot());
+      return;
+    }
+
     if (m.type === "cmd" && (m.cmd === "arm" || m.cmd === "disarm")) {
       const targets = m.location === "*" ? Object.values(locations) : [locations[m.location]];
       let sent = 0;

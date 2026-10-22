@@ -17,7 +17,9 @@
 --shadow:0 1px 2px rgba(15,23,42,.06),0 6px 18px rgba(15,23,42,.06)}
 @media (prefers-color-scheme:dark){:root{--bg:#0b1020;--card:#141b2e;--text:#e5e9f2;--muted:#94a3b8;--border:#223049;--shadow:none}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
 body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+body.locked .wrap{visibility:hidden}
 body.alarm{animation:flash 1s infinite}
 @keyframes flash{0%,100%{background:var(--bg)}50%{background:#7f1d1d}}
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.55)}50%{box-shadow:0 0 0 16px rgba(220,38,38,0)}}
@@ -68,6 +70,14 @@ button.big .ic{width:22px;height:22px}
 .ev small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
 .empty{color:var(--muted);font-size:14px;padding:6px 0;text-align:center}
 #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#1e293b;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;display:none;z-index:9;box-shadow:0 6px 20px rgba(0,0,0,.3)}
+.auth-screen{position:fixed;inset:0;display:grid;place-items:center;padding:20px;background:var(--bg);z-index:20}
+.auth-card{width:min(100%,380px);padding:24px;background:var(--card);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow)}
+.auth-card h1{margin:0 0 6px;font-size:22px}
+.auth-card p{margin:0 0 18px;color:var(--muted);font-size:14px}
+.auth-card label{display:block;margin-bottom:6px;font-size:14px;font-weight:600}
+.auth-card input{width:100%;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font:inherit}
+.auth-card button{width:100%;margin-top:12px;background:var(--blue);border-color:var(--blue);color:#fff}
+.auth-error{min-height:20px;margin-top:10px;color:var(--red);font-size:13px}
 </style>
 </head>
 <body>
@@ -76,6 +86,7 @@ button.big .ic{width:22px;height:22px}
     <div class="brand"><span class="logo" id="logo"></span>Anti-Theft Guard</div>
     <div style="display:flex;align-items:center;gap:8px">
       <button class="install" id="installApp" type="button" data-act="install">Install app</button>
+      <button id="lockDashboard" type="button" data-act="lock-dashboard" hidden>Lock</button>
       <span class="pill" id="conn"></span>
     </div>
   </header>
@@ -96,6 +107,16 @@ button.big .ic{width:22px;height:22px}
 
   <h2>History</h2>
   <div class="card" id="history"></div>
+</div>
+<div class="auth-screen" id="authScreen" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+  <form class="auth-card" id="authForm">
+    <h1 id="authTitle">Dashboard locked</h1>
+    <p>Enter your private PIN to view and control your guard.</p>
+    <label for="authPin">Dashboard PIN</label>
+    <input id="authPin" type="password" inputmode="numeric" autocomplete="current-password" minlength="6" maxlength="128" required>
+    <button type="submit">Unlock dashboard</button>
+    <div class="auth-error" id="authError" role="alert" aria-live="polite"></div>
+  </form>
 </div>
 <div id="toast"></div>
 
@@ -120,7 +141,7 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const ago=t=>{const s=Math.floor((Date.now()-new Date(t).getTime())/1000);if(s<10)return"just now";if(s<60)return s+"s ago";const m=Math.floor(s/60);if(m<60)return m+" min ago";const h=Math.floor(m/60);return h<24?h+" h ago":new Date(t).toLocaleDateString();};
 
-let ws, connected=false, data={locations:[],history:[]};
+let ws, connected=false, authenticated=false, pinRequired=true, dashboardPin=null, data={locations:[],history:[]};
 let audioOn=false, silenced=false, alarming=false, ctx=null, siren=null, sirenTimer=null, vibTimer=null, wakeLock=null, alarmAudio=null, soundPlaying=false;
 let installPrompt=null;
 const canVibrate=("vibrate" in navigator);
@@ -234,6 +255,7 @@ function render(){
   $("logo").innerHTML=ic("shield");
   $("conn").className="pill"+(connected?" live":"");
   $("conn").innerHTML=ic(connected?"wifi":"wifioff")+(connected?"Live":"Reconnecting");
+  $("lockDashboard").hidden=!authenticated;
   $("armAll").innerHTML=ic("lock")+"ARM";
   $("disAll").innerHTML=ic("unlock")+"DISARM";
 
@@ -294,10 +316,38 @@ document.addEventListener("click",e=>{
   else if(act==="dis-all") sendCmd("*","disarm");
   else if(act==="arm") sendCmd(b.dataset.n,"arm");
   else if(act==="dis") sendCmd(b.dataset.n,"disarm");
+  else if(act==="lock-dashboard") lockDashboard();
   else if(act==="enable") enableAlerts();
   else if(act==="test") testAlarm();
   else if(act==="silence") silence();
   else if(act==="install") installApp();
+});
+
+function showAuthError(message){
+  $("authError").textContent=message;
+  $("authScreen").hidden=false;
+  document.body.classList.add("locked");
+  if(pinRequired) $("authPin").focus();
+}
+function submitPin(pin){
+  if(!ws||ws.readyState!==1){showAuthError("Connecting to the server. Please try again.");return;}
+  dashboardPin=pin;
+  ws.send(JSON.stringify({type:"auth",pin:pin}));
+}
+function lockDashboard(){
+  authenticated=false;
+  dashboardPin=null;
+  data={locations:[],history:[]};
+  document.body.classList.add("locked");
+  $("authScreen").hidden=false;
+  $("authPin").value="";
+  $("authError").textContent="";
+  if(ws) ws.close();
+  render();
+}
+$("authForm").addEventListener("submit",event=>{
+  event.preventDefault();
+  submitPin($("authPin").value);
 });
 
 function connect(){
@@ -307,11 +357,32 @@ function connect(){
   ws.onopen=()=>{connected=true;render();};
   ws.onmessage=ev=>{
     const m=JSON.parse(ev.data);
-    if(m.type==="snapshot"){data=m;render();}
+    if(m.type==="auth-required"){
+      pinRequired=m.pinRequired;
+      if(!pinRequired) submitPin("");
+      else if(dashboardPin!==null) submitPin(dashboardPin);
+      else showAuthError("");
+    }
+    else if(m.type==="auth-result"){
+      if(m.ok){
+        authenticated=true;
+        $("authScreen").hidden=true;
+        document.body.classList.remove("locked");
+        $("authPin").value="";
+        $("authError").textContent="";
+        render();
+      }else{
+        dashboardPin=null;
+        $("authPin").value="";
+        showAuthError(m.text||"Unable to unlock dashboard.");
+      }
+    }
+    else if(m.type==="snapshot"&&authenticated){data=m;render();}
     else if(m.type==="notice"){toast(m.text);}
   };
-  ws.onclose=()=>{connected=false;render();setTimeout(connect,2000);};
+  ws.onclose=()=>{connected=false;authenticated=false;data={locations:[],history:[]};document.body.classList.add("locked");$("authScreen").hidden=false;render();setTimeout(connect,2000);};
 }
+document.body.classList.add("locked");
 render();
 connect();
 setInterval(render,30000);
