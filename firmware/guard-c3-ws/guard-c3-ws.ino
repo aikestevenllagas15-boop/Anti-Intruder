@@ -22,8 +22,8 @@ const int TRIG = 3, ECHO = 4, BUZZER = 5, RED = 6, GREEN = 7;
 const float MAX_RANGE_CM = 450;   // about the farthest an HC-SR04 can measure
 const float NEAR_CM = 20;         // anything closer than this always triggers
 const float CHANGE_CM = 10;       // getting this much closer than normal triggers
-const unsigned long SENSOR_INTERVAL_MS = 60; // minimum interval recommended for HC-SR04
-const unsigned long BEEP_MS = 10;
+const int SAMPLES = 5;
+const int BEEP_MS = 10;           // length of the "ready" beep (same as your code)
 
 enum State { DISARMED, ARMED, ALARM };
 State state = DISARMED;
@@ -32,11 +32,23 @@ WebSocketsClient ws;
 String wsPath;
 bool wsConnected = false;
 volatile int pendingCmd = 0;      // 1 = arm, 2 = disarm (handled in loop)
+bool arming = false;
+bool cancelArming = false;
 
 float baseline = 0, lastCm = 0;
-int clears = 0;
-unsigned long lastSampleAt = 0;
-unsigned long armBeepAt = 0;
+int hits = 0, clears = 0;
+
+// ---------- helpers ----------
+void servicePendingDisarm();
+
+void waitMs(unsigned long ms) {   // delay that keeps the WebSocket alive
+  unsigned long t = millis();
+  while (millis() - t < ms) {
+    ws.loop();
+    servicePendingDisarm();
+    delay(2);
+  }
+}
 
 void setLeds(bool green, bool red) {
   digitalWrite(GREEN, green);
@@ -47,10 +59,31 @@ float readCm() {
   digitalWrite(TRIG, LOW);  delayMicroseconds(2);
   digitalWrite(TRIG, HIGH); delayMicroseconds(10);
   digitalWrite(TRIG, LOW);
-  long d = pulseIn(ECHO, HIGH, (unsigned long)(MAX_RANGE_CM * 58.3));
+  long d = pulseIn(ECHO, HIGH, 38000);
   if (d == 0) return MAX_RANGE_CM;
   float cm = d * 0.0343 / 2;
   return cm > MAX_RANGE_CM ? MAX_RANGE_CM : cm;
+}
+
+float readMedian() {              // 5 readings, takes the middle one
+  float v[SAMPLES];
+  for (int i = 0; i < SAMPLES; i++) { v[i] = readCm(); waitMs(60); }
+  for (int i = 1; i < SAMPLES; i++) {
+    float x = v[i]; int j = i - 1;
+    while (j >= 0 && v[j] > x) { v[j + 1] = v[j]; j--; }
+    v[j + 1] = x;
+  }
+  return v[SAMPLES / 2];
+}
+
+float learnBaseline() {           // waits until two readings agree
+  float a = readMedian();
+  for (int i = 0; i < 5; i++) {
+    float b = readMedian();
+    if (fabs(a - b) < 5) return (a + b) / 2;
+    a = b;
+  }
+  return a;
 }
 
 // ---------- WebSocket messages ----------
@@ -107,31 +140,39 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
 
 // ---------- state changes ----------
 void armNow() {
+  arming = true;
+  cancelArming = false;
   digitalWrite(BUZZER, LOW);
   setLeds(true, false);                       // green ON
-  baseline = readCm();                        // one immediate reading of the empty scene
+  baseline = learnBaseline();                 // remembers the empty scene
+  arming = false;
+  if (cancelArming) return;
   Serial.print("Baseline: ");
   Serial.println(baseline);
-  clears = 0;
+  hits = 0; clears = 0;
   state = ARMED;
-  digitalWrite(BUZZER, HIGH);
-  armBeepAt = millis();
-  lastSampleAt = millis() - SENSOR_INTERVAL_MS;
+  digitalWrite(BUZZER, HIGH); waitMs(BEEP_MS); // one short beep = armed
+  digitalWrite(BUZZER, LOW);
   sendStatus();
 }
 
 void disarmNow() {
   state = DISARMED;
-  armBeepAt = 0;
   digitalWrite(BUZZER, LOW);
   setLeds(false, false);                      // all off
   sendStatus();
 }
 
+void servicePendingDisarm() {
+  if (pendingCmd != 2) return;
+  pendingCmd = 0;
+  if (state != DISARMED) disarmNow();
+  else if (arming) cancelArming = true;
+}
+
 void triggerAlarm() {
   state = ALARM;
   clears = 0;
-  armBeepAt = 0;
   digitalWrite(BUZZER, HIGH);
   setLeds(false, true);                       // red ON
   sendAlert();
@@ -140,6 +181,7 @@ void triggerAlarm() {
 
 void clearAlarm() {
   state = ARMED;
+  hits = 0;
   digitalWrite(BUZZER, LOW);
   setLeds(true, false);                       // back to green
   sendStatus();
@@ -159,7 +201,17 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-  Serial.println("Connecting to WiFi in the background");
+  Serial.print("Connecting to WiFi");
+  unsigned long t = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) {
+    delay(300);
+    Serial.print(".");
+  }
+  Serial.println(WiFi.status() == WL_CONNECTED ? " connected" : " failed (alarm still works offline)");
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("ESP32 IP: ");
+    Serial.println(WiFi.localIP());
+  }
 
   wsPath = String("/device?key=") + DEVICE_KEY + "&loc=" + LOCATION;
   Serial.print("Connecting to wss://");
@@ -172,6 +224,7 @@ void setup() {
   ws.setReconnectInterval(3000);
   ws.enableHeartbeat(15000, 3000, 2);
 
+  waitMs(3000);                               // step away, keep the area clear
   armNow();
 }
 
@@ -185,20 +238,15 @@ void loop() {
     else if (c == 2 && state != DISARMED) disarmNow();
   }
 
-  if (armBeepAt && millis() - armBeepAt >= BEEP_MS) {
-    armBeepAt = 0;
-    if (state == ARMED) digitalWrite(BUZZER, LOW);
-  }
+  if (state == DISARMED) { delay(20); return; }
+  if (state == ALARM && LATCH_ALARM) return;
 
-  if (state == DISARMED || (state == ALARM && LATCH_ALARM)) return;
-  if (millis() - lastSampleAt < SENSOR_INTERVAL_MS) return;
-  lastSampleAt = millis();
-
-  lastCm = readCm();
+  lastCm = readMedian();
   bool closer = (lastCm < NEAR_CM) || (lastCm < baseline - CHANGE_CM);
 
   if (state == ARMED) {
-    if (closer) triggerAlarm();               // trigger on the first detection
+    hits = closer ? hits + 1 : 0;
+    if (hits >= 2) triggerAlarm();            // 2 readings in a row, to avoid false alarms
   } else if (state == ALARM && !LATCH_ALARM) {
     clears = closer ? 0 : clears + 1;
     if (clears >= 2) clearAlarm();
