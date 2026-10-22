@@ -175,7 +175,22 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const ago=t=>{const s=Math.floor((Date.now()-new Date(t).getTime())/1000);if(s<10)return"just now";if(s<60)return s+"s ago";const m=Math.floor(s/60);if(m<60)return m+" min ago";const h=Math.floor(m/60);return h<24?h+" h ago":new Date(t).toLocaleDateString();};
 
-let ws, connected=false, authenticated=false, pinRequired=true, dashboardPin=null, data={locations:[],history:[]};
+const DASHBOARD_PIN_SESSION_KEY="door-alarm-dashboard-pin";
+function getSavedDashboardPin(){
+  try{return sessionStorage.getItem(DASHBOARD_PIN_SESSION_KEY);}
+  catch(error){console.error("Could not restore dashboard PIN session:",error);return null;}
+}
+function saveDashboardPin(pin){
+  try{
+    if(pinRequired)sessionStorage.setItem(DASHBOARD_PIN_SESSION_KEY,pin);
+    else sessionStorage.removeItem(DASHBOARD_PIN_SESSION_KEY);
+  }catch(error){console.error("Could not save dashboard PIN session:",error);toast("This browser cannot remember the dashboard unlock after refresh");}
+}
+function clearSavedDashboardPin(){
+  try{sessionStorage.removeItem(DASHBOARD_PIN_SESSION_KEY);}
+  catch(error){console.error("Could not clear dashboard PIN session:",error);}
+}
+let ws, connected=false, authenticated=false, pinRequired=true, dashboardPin=getSavedDashboardPin(), data={locations:[],history:[]};
 let audioOn=false, silenced=false, alarming=false, ctx=null, siren=null, sirenTimer=null, vibTimer=null, wakeLock=null, alarmAudio=null, soundPlaying=false;
 let customAlarmUrl=null, customAlarmName="";
 const canVibrate=("vibrate" in navigator);
@@ -462,6 +477,7 @@ function submitPin(pin){
 function lockDashboard(){
   authenticated=false;
   dashboardPin=null;
+  clearSavedDashboardPin();
   data={locations:[],history:[]};
   document.body.classList.add("locked");
   $("authScreen").hidden=false;
@@ -491,6 +507,7 @@ function connect(){
     else if(m.type==="auth-result"){
       if(m.ok){
         authenticated=true;
+        saveDashboardPin(dashboardPin||"");
         $("authScreen").hidden=true;
         document.body.classList.remove("locked");
         $("authPin").value="";
@@ -498,6 +515,7 @@ function connect(){
         render();
       }else{
         dashboardPin=null;
+        clearSavedDashboardPin();
         $("authPin").value="";
         showAuthError(m.text||"Unable to unlock dashboard.");
       }
