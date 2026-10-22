@@ -1,4 +1,4 @@
-// Anti-Theft Guard - WebSocket server + dashboard
+// Door Alarm - WebSocket server + dashboard
 // Run: npm install && npm start   (Node.js 18 or newer)
 
 const express = require("express");
@@ -80,7 +80,7 @@ async function notifyPhone(location) {
     await fetch("https://ntfy.sh/" + encodeURIComponent(NTFY_TOPIC), {
       method: "POST",
       body: "Intrusion detected at " + location + " - " + new Date().toLocaleString(),
-      headers: { Title: "ANTI-THEFT ALERT", Priority: "urgent", Tags: "rotating_light" },
+      headers: { Title: "DOOR ALARM ALERT", Priority: "urgent", Tags: "rotating_light" },
     });
   } catch (e) {
     console.log("Phone alert failed:", e.message);

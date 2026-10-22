@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Anti-Theft Guard",
-  "short_name": "Anti-Theft",
-  "description": "Monitor and control your connected Anti-Theft Guard devices.",
+  "name": "Door Alarm",
+  "short_name": "Door Alarm",
+  "description": "Monitor and control your connected Door Alarm devices.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

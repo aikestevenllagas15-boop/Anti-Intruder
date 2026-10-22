@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f172a">
-<meta name="description" content="Monitor and control your connected Anti-Theft Guard devices.">
+<meta name="description" content="Monitor and control your connected Door Alarm devices.">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Anti-Theft Guard">
+<meta name="apple-mobile-web-app-title" content="Door Alarm">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icon.svg">
-<title>Anti-Theft Guard</title>
+<title>Door Alarm</title>
 <style>
 :root{--bg:#f1f5f9;--card:#ffffff;--text:#0f172a;--muted:#64748b;--border:#e2e8f0;
 --green:#16a34a;--red:#dc2626;--amber:#d97706;--slate:#64748b;--blue:#2563eb;
@@ -83,7 +83,7 @@ button.big .ic{width:22px;height:22px}
 <body>
 <div class="wrap">
   <header>
-    <div class="brand"><span class="logo" id="logo"></span>Anti-Theft Guard</div>
+    <div class="brand"><span class="logo" id="logo"></span>Door Alarm</div>
     <div style="display:flex;align-items:center;gap:8px">
       <button class="install" id="installApp" type="button" data-act="install">Install app</button>
       <button id="lockDashboard" type="button" data-act="lock-dashboard" hidden>Lock</button>
@@ -122,6 +122,7 @@ button.big .ic{width:22px;height:22px}
 
 <script>
 const ICONS = {
+  door:'<path d="M5 21h14M7 21V5l10-2v18"/><path d="M13 12h.01M19 8l2-2m-2 6h3"/>',
   shield:'<path d="M12 2l8 3v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11V5z"/>',
   shieldcheck:'<path d="M12 2l8 3v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/>',
   shieldalert:'<path d="M12 2l8 3v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11V5z"/><path d="M12 8v4M12 16h.01"/>',
@@ -252,7 +253,7 @@ const STATE={
 };
 
 function render(){
-  $("logo").innerHTML=ic("shield");
+  $("logo").innerHTML=ic("door");
   $("conn").className="pill"+(connected?" live":"");
   $("conn").innerHTML=ic(connected?"wifi":"wifioff")+(connected?"Live":"Reconnecting");
   $("lockDashboard").hidden=!authenticated;
@@ -305,7 +306,7 @@ function render(){
       '<small>'+ago(e.time)+" - "+new Date(e.time).toLocaleString()+esc(extra)+'</small></div></div>';
   }).join(""):'<div class="empty">No events yet</div>';
 
-  document.title=alarmLocs.length?"ALARM - Anti-Theft Guard":"Anti-Theft Guard";
+  document.title=alarmLocs.length?"ALARM - Door Alarm":"Door Alarm";
   updateAlarm(alarmLocs);
 }
 

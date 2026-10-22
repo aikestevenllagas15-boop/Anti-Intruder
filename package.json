@@ -1,7 +1,7 @@
 {
-  "name": "anti-theft-guard",
+  "name": "door-alarm",
   "version": "1.0.0",
-  "description": "WebSocket server and dashboard for the ESP32 Anti-Theft Guard",
+  "description": "WebSocket server and dashboard for the ESP32 Door Alarm",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
