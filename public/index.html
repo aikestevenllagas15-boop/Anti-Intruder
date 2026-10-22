@@ -83,6 +83,14 @@ button.big .ic{width:22px;height:22px}
 .auth-card input{width:100%;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font:inherit}
 .auth-card button{width:100%;margin-top:12px;background:var(--blue);border-color:var(--blue);color:#fff}
 .auth-error{min-height:20px;margin-top:10px;color:var(--red);font-size:13px}
+.rename-screen{position:fixed;inset:0;display:grid;place-items:center;padding:20px;background:rgba(15,23,42,.65);z-index:15}
+.rename-card{width:min(100%,380px);padding:20px;background:var(--card);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow)}
+.rename-card h2{margin:0 0 8px;font-size:18px;color:var(--text);letter-spacing:0;text-transform:none}
+.rename-card p{margin:0 0 14px;color:var(--muted);font-size:13px}
+.rename-card label{display:block;margin-bottom:6px;font-size:14px;font-weight:600}
+.rename-card input{width:100%;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font:inherit}
+.rename-card .bar{margin-top:12px}
+.rename-card .save{background:var(--blue);border-color:var(--blue);color:#fff}
 </style>
 </head>
 <body>
@@ -129,6 +137,18 @@ button.big .ic{width:22px;height:22px}
     <input id="authPin" type="password" autocomplete="current-password" minlength="6" maxlength="128" required>
     <button type="submit">Unlock dashboard</button>
     <div class="auth-error" id="authError" role="alert" aria-live="polite"></div>
+  </form>
+</div>
+<div class="rename-screen" id="renameScreen" role="dialog" aria-modal="true" aria-labelledby="renameTitle" hidden>
+  <form class="rename-card" id="renameForm">
+    <h2 id="renameTitle">Rename location</h2>
+    <p>This display name is shared across dashboards. Leave blank to restore the device name.</p>
+    <label for="locationNameInput">Location name</label>
+    <input id="locationNameInput" type="text" maxlength="40" autocomplete="off">
+    <div class="bar">
+      <button type="button" data-act="cancel-rename">Cancel</button>
+      <button type="submit" class="save">Save name</button>
+    </div>
   </form>
 </div>
 <div id="toast"></div>
@@ -306,12 +326,15 @@ function sendCmd(loc,cmd){
   if(!ws||ws.readyState!==1){toast("Not connected to server");return;}
   ws.send(JSON.stringify({type:"cmd",location:loc,cmd:cmd}));
 }
+let renamingLocation=null;
 function renameLocation(id,currentName){
   if(!ws||ws.readyState!==1){toast("Not connected to server");return;}
-  const name=prompt("Enter a new display name. Leave blank to use the device name again.",currentName);
-  if(name===null)return;
-  ws.send(JSON.stringify({type:"rename-location",location:id,name:name.trim()}));
+  renamingLocation=id;
+  $("locationNameInput").value=currentName===id?"":currentName;
+  $("renameScreen").hidden=false;
+  $("locationNameInput").focus();
 }
+function closeRename(){renamingLocation=null;$("renameScreen").hidden=true;}
 const STATE={
   armed:["ARMED","var(--green)","lock"], disarmed:["DISARMED","var(--slate)","unlock"],
   alarm:["ALARM","var(--red)","alert"], unknown:["UNKNOWN","var(--slate)","shield"]
@@ -385,6 +408,7 @@ document.addEventListener("click",e=>{
   else if(act==="arm") sendCmd(b.dataset.n,"arm");
   else if(act==="dis") sendCmd(b.dataset.n,"disarm");
   else if(act==="rename") renameLocation(b.dataset.n,b.dataset.label);
+  else if(act==="cancel-rename") closeRename();
   else if(act==="lock-dashboard") lockDashboard();
   else if(act==="enable") enableAlerts();
   else if(act==="test") testAlarm();
@@ -398,6 +422,14 @@ document.addEventListener("click",e=>{
       render();toast("Using the default alarm sound");
     }).catch(error=>{console.error("Could not remove custom alarm sound:",error);toast("Could not remove saved alarm sound");});
   }
+});
+
+$("renameForm").addEventListener("submit",event=>{
+  event.preventDefault();
+  if(renamingLocation===null)return;
+  if(!ws||ws.readyState!==1){toast("Not connected to server");return;}
+  ws.send(JSON.stringify({type:"rename-location",location:renamingLocation,name:$("locationNameInput").value.trim()}));
+  closeRename();
 });
 
 document.addEventListener("change",event=>{
