@@ -63,6 +63,11 @@ button.big .ic{width:22px;height:22px}
 .alerts p{margin:2px 0 0;font-size:12px;color:var(--muted)}
 .alerts button{background:var(--blue);border-color:var(--blue);color:#fff}
 .alerts button.ghost{background:var(--card);color:var(--text);border-color:var(--border)}
+.alert-settings{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.alert-settings button{padding:8px 10px;font-size:12px}
+.alert-settings button.ghost{background:var(--card);color:var(--text);border-color:var(--border)}
+.alert-settings .sub{flex:1 1 100%}
+.rename{padding:7px 9px;font-size:12px}
 .ev{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);align-items:flex-start}
 .ev:last-child{border-bottom:0}
 .ev .dot{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:#fff;flex:none}
@@ -94,7 +99,14 @@ button.big .ic{width:22px;height:22px}
   <div class="hero off" id="hero"></div>
 
   <h2>Alerts on this device</h2>
-  <div class="card" id="alerts"></div>
+  <div class="card"><div id="alerts"></div>
+    <div class="alert-settings">
+      <button type="button" data-act="choose-alarm">Choose alarm sound</button>
+      <button type="button" class="ghost" data-act="reset-alarm">Use default sound</button>
+      <input id="alarmFile" type="file" accept="audio/*" hidden>
+      <div class="sub" id="alarmSoundName">Default alarm sound · uploaded sounds are saved only in this browser</div>
+    </div>
+  </div>
 
   <h2>Control</h2>
   <div class="bar">
@@ -103,6 +115,7 @@ button.big .ic{width:22px;height:22px}
   </div>
 
   <h2>Locations</h2>
+  <p class="sub">Renames are shared across dashboard users.</p>
   <div id="locations"></div>
 
   <h2>History</h2>
@@ -144,13 +157,62 @@ const ago=t=>{const s=Math.floor((Date.now()-new Date(t).getTime())/1000);if(s<1
 
 let ws, connected=false, authenticated=false, pinRequired=true, dashboardPin=null, data={locations:[],history:[]};
 let audioOn=false, silenced=false, alarming=false, ctx=null, siren=null, sirenTimer=null, vibTimer=null, wakeLock=null, alarmAudio=null, soundPlaying=false;
+let customAlarmUrl=null, customAlarmName="";
 const canVibrate=("vibrate" in navigator);
 const ALARM_SOUND_URL="https://www.myinstants.com/media/sounds/mama-rene-baterbonia.mp3";
+const ALARM_DB_NAME="door-alarm-settings";
+const ALARM_DB_STORE="settings";
 const userAgent=navigator.userAgent;
 const isAndroidWebView=/Android/i.test(userAgent) &&
   (/\bwv\b/i.test(userAgent) || (/Version\/4\.0/i.test(userAgent) && /Chrome\//i.test(userAgent)));
 const isStandalone=window.matchMedia("(display-mode: standalone)").matches || navigator.standalone===true;
 if(isAndroidWebView || isStandalone) document.documentElement.classList.add("installed-app");
+
+function openAlarmDb(){
+  return new Promise((resolve,reject)=>{
+    if(!("indexedDB" in window)){reject(new Error("Local audio storage is not supported"));return;}
+    const request=indexedDB.open(ALARM_DB_NAME,1);
+    request.onupgradeneeded=()=>request.result.createObjectStore(ALARM_DB_STORE);
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error||new Error("Could not open local audio storage"));
+    request.onblocked=()=>reject(new Error("Local audio storage is blocked by another tab"));
+  });
+}
+function storeCustomAlarm(value){
+  return openAlarmDb().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(ALARM_DB_STORE,"readwrite");
+    tx.objectStore(ALARM_DB_STORE).put(value,"custom-alarm");
+    tx.oncomplete=()=>{db.close();resolve();};
+    tx.onerror=()=>{db.close();reject(tx.error||new Error("Could not save the alarm sound"));};
+    tx.onabort=()=>{db.close();reject(tx.error||new Error("Could not save the alarm sound"));};
+  }));
+}
+function loadCustomAlarm(){
+  return openAlarmDb().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(ALARM_DB_STORE,"readonly");
+    const request=tx.objectStore(ALARM_DB_STORE).get("custom-alarm");
+    request.onsuccess=()=>resolve(request.result||null);
+    request.onerror=()=>reject(request.error||new Error("Could not load the alarm sound"));
+    tx.oncomplete=()=>db.close();
+    tx.onerror=()=>{db.close();reject(tx.error||new Error("Could not load the alarm sound"));};
+  }));
+}
+function removeCustomAlarm(){
+  return openAlarmDb().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(ALARM_DB_STORE,"readwrite");
+    tx.objectStore(ALARM_DB_STORE).delete("custom-alarm");
+    tx.oncomplete=()=>{db.close();resolve();};
+    tx.onerror=()=>{db.close();reject(tx.error||new Error("Could not remove the alarm sound"));};
+    tx.onabort=()=>{db.close();reject(tx.error||new Error("Could not remove the alarm sound"));};
+  }));
+}
+loadCustomAlarm().then(saved=>{
+  if(saved&&saved.blob instanceof Blob){
+    customAlarmUrl=URL.createObjectURL(saved.blob);
+    customAlarmName=saved.name||"Custom alarm sound";
+    render();
+  }
+}).catch(error=>{console.error("Could not load custom alarm sound:",error);toast("Could not load saved alarm sound");});
 
 if("serviceWorker" in navigator){
   window.addEventListener("load",()=>{
@@ -163,14 +225,17 @@ if("serviceWorker" in navigator){
 function startSiren(){
   if(!audioOn||silenced||soundPlaying) return;
   soundPlaying=true;
+  const soundUrl=customAlarmUrl||ALARM_SOUND_URL;
   if(!alarmAudio){
-    alarmAudio=new Audio(ALARM_SOUND_URL);
+    alarmAudio=new Audio(soundUrl);
     alarmAudio.loop=true;
     alarmAudio.preload="auto";
+  }else if(alarmAudio.src!==soundUrl){
+    alarmAudio.src=soundUrl;
   }
   alarmAudio.play().catch(()=>{
     if(!soundPlaying) return;
-    toast("Linked alarm audio unavailable; using built-in siren");
+    toast("Selected alarm audio unavailable; using built-in siren");
     startBuiltinSiren();
   });
   if(canVibrate){
@@ -241,6 +306,12 @@ function sendCmd(loc,cmd){
   if(!ws||ws.readyState!==1){toast("Not connected to server");return;}
   ws.send(JSON.stringify({type:"cmd",location:loc,cmd:cmd}));
 }
+function renameLocation(id,currentName){
+  if(!ws||ws.readyState!==1){toast("Not connected to server");return;}
+  const name=prompt("Enter a new display name. Leave blank to use the device name again.",currentName);
+  if(name===null)return;
+  ws.send(JSON.stringify({type:"rename-location",location:id,name:name.trim()}));
+}
 const STATE={
   armed:["ARMED","var(--green)","lock"], disarmed:["DISARMED","var(--slate)","unlock"],
   alarm:["ALARM","var(--red)","alert"], unknown:["UNKNOWN","var(--slate)","shield"]
@@ -278,9 +349,10 @@ function render(){
     a.innerHTML='<div class="alerts"><div><div class="name">Sound and vibration</div><p>Tap once to allow the alarm on this device</p></div>'+
       '<button data-act="enable">'+ic("bell")+"Enable</button></div>";
   }else{
-    a.innerHTML='<div class="alerts"><div><div class="name">'+ic("volume")+' Alerts on</div><p>MAMA RENE BATERBONIA'+(canVibrate?" and vibration":"")+
+    a.innerHTML='<div class="alerts"><div><div class="name">'+ic("volume")+' Alerts on</div><p>'+(customAlarmName?esc(customAlarmName):"Default online alarm sound")+(canVibrate?" and vibration":"")+
       ' when an intrusion is detected. Keep this page open.</p></div><button class="ghost" data-act="test">Test</button></div>';
   }
+  $("alarmSoundName").textContent=customAlarmName||"Default alarm sound · uploads stay in this browser";
 
   const box=$("locations");
   box.innerHTML=data.locations.length?data.locations.map(l=>{
@@ -288,8 +360,9 @@ function render(){
     return '<div class="card"><div class="row"><div class="left">'+ic("pin")+'<div><div class="name">'+esc(l.name)+
       '</div><div class="sub">Last seen '+ago(l.lastSeen)+'</div></div></div>'+
       '<span class="badge" style="background:'+s[1]+'">'+ic(s[2])+s[0]+'</span></div>'+
-      '<div class="bar"><button class="arm" '+(l.online?"":"disabled")+' data-act="arm" data-n="'+esc(l.name)+'">'+ic("lock")+'Arm</button>'+
-      '<button class="dis" '+(l.online?"":"disabled")+' data-act="dis" data-n="'+esc(l.name)+'">'+ic("unlock")+'Disarm</button></div></div>';
+      '<div class="bar"><button class="arm" '+(l.online?"":"disabled")+' data-act="arm" data-n="'+esc(l.id||l.name)+'">'+ic("lock")+'Arm</button>'+
+      '<button class="dis" '+(l.online?"":"disabled")+' data-act="dis" data-n="'+esc(l.id||l.name)+'">'+ic("unlock")+'Disarm</button></div>'+
+      '<button class="rename" data-act="rename" data-n="'+esc(l.id||l.name)+'" data-label="'+esc(l.name)+'">Rename location</button></div>';
   }).join(""):'<div class="card empty">No devices yet</div>';
 
   const hist=$("history");
@@ -311,10 +384,36 @@ document.addEventListener("click",e=>{
   else if(act==="dis-all") sendCmd("*","disarm");
   else if(act==="arm") sendCmd(b.dataset.n,"arm");
   else if(act==="dis") sendCmd(b.dataset.n,"disarm");
+  else if(act==="rename") renameLocation(b.dataset.n,b.dataset.label);
   else if(act==="lock-dashboard") lockDashboard();
   else if(act==="enable") enableAlerts();
   else if(act==="test") testAlarm();
   else if(act==="silence") silence();
+  else if(act==="choose-alarm") $("alarmFile").click();
+  else if(act==="reset-alarm"){
+    removeCustomAlarm().then(()=>{
+      if(customAlarmUrl)URL.revokeObjectURL(customAlarmUrl);
+      customAlarmUrl=null;customAlarmName="";
+      if(alarming){stopSiren();startSiren();}
+      render();toast("Using the default alarm sound");
+    }).catch(error=>{console.error("Could not remove custom alarm sound:",error);toast("Could not remove saved alarm sound");});
+  }
+});
+
+document.addEventListener("change",event=>{
+  if(event.target.id!=="alarmFile")return;
+  const file=event.target.files&&event.target.files[0];
+  event.target.value="";
+  if(!file)return;
+  if(!file.type.startsWith("audio/")){toast("Choose a valid audio file");return;}
+  if(file.size>5*1024*1024){toast("Audio file must be 5 MB or smaller");return;}
+  storeCustomAlarm({blob:file,name:file.name}).then(()=>{
+    if(customAlarmUrl)URL.revokeObjectURL(customAlarmUrl);
+    customAlarmUrl=URL.createObjectURL(file);
+    customAlarmName=file.name;
+    if(alarming){stopSiren();startSiren();}
+    render();toast("Custom alarm sound saved on this device");
+  }).catch(error=>{console.error("Could not save custom alarm sound:",error);toast("Could not save alarm sound");});
 });
 
 function showAuthError(message){

@@ -14,6 +14,7 @@ const DASH_KEY = process.env.DASH_KEY || "";           // optional: protects the
 const DASH_PIN = process.env.DASH_PIN || "";           // optional: requires a PIN to view/control the dashboard
 const NTFY_TOPIC = process.env.NTFY_TOPIC || "";          // optional phone alerts via ntfy.sh
 const DATA_FILE = path.join(__dirname, "events.json");
+const SETTINGS_FILE = process.env.SETTINGS_FILE || path.join(__dirname, "settings.json");
 const PIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const MAX_PIN_ATTEMPTS = 5;
 const pinAttempts = new Map();
@@ -39,17 +40,40 @@ try {
 } catch (e) {}
 
 const locations = {}; // name -> { name, state, online, lastSeen, ws }
+let locationNames = Object.create(null);
+try {
+  const savedNames = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8"));
+  if (savedNames && typeof savedNames === "object" && !Array.isArray(savedNames)) {
+    for (const [id, name] of Object.entries(savedNames)) {
+      if (typeof name === "string" && name.trim() && name.trim().length <= 40) {
+        locationNames[id] = name.trim();
+      }
+    }
+  } else {
+    throw new Error("Location settings must be a JSON object");
+  }
+} catch (e) {
+  if (e.code !== "ENOENT") console.error("Could not load location settings:", e.message);
+}
+
+function displayLocationName(id) {
+  return locationNames[id] || id;
+}
 
 function snapshot() {
   return JSON.stringify({
     type: "snapshot",
     locations: Object.values(locations).map((l) => ({
-      name: l.name,
+      id: l.name,
+      name: displayLocationName(l.name),
       state: l.state,
       online: l.online,
       lastSeen: l.lastSeen,
     })),
-    history: history.slice(0, 50),
+    history: history.slice(0, 50).map((event) => ({
+      ...event,
+      location: displayLocationName(event.location),
+    })),
   });
 }
 
@@ -79,7 +103,7 @@ async function notifyPhone(location) {
   try {
     await fetch("https://ntfy.sh/" + encodeURIComponent(NTFY_TOPIC), {
       method: "POST",
-      body: "Intrusion detected at " + location + " - " + new Date().toLocaleString(),
+      body: "Intrusion detected at " + displayLocationName(location) + " - " + new Date().toLocaleString(),
       headers: { Title: "DOOR ALARM ALERT", Priority: "urgent", Tags: "rotating_light" },
     });
   } catch (e) {
@@ -229,6 +253,41 @@ dashWss.on("connection", (ws, req) => {
       ws.authenticated = true;
       ws.send(JSON.stringify({ type: "auth-result", ok: true }));
       ws.send(snapshot());
+      return;
+    }
+
+    if (m.type === "rename-location") {
+      if (typeof m.location !== "string" || !Object.prototype.hasOwnProperty.call(locations, m.location) ||
+          typeof m.name !== "string" || m.name.trim().length > 40 ||
+          /[\u0000-\u001f\u007f]/.test(m.name)) {
+        ws.send(JSON.stringify({ type: "notice", text: "Use up to 40 characters; leave blank to reset the name." }));
+        return;
+      }
+      const name = m.name.trim();
+      const duplicate = Object.keys(locations).some(
+        (id) => id !== m.location && displayLocationName(id).toLocaleLowerCase() === name.toLocaleLowerCase()
+      );
+      if (name && duplicate) {
+        ws.send(JSON.stringify({ type: "notice", text: "That display name is already in use." }));
+        return;
+      }
+      const nextNames = { ...locationNames };
+      if (name === m.location) delete nextNames[m.location];
+      else nextNames[m.location] = name;
+      fs.writeFile(SETTINGS_FILE, JSON.stringify(nextNames), (error) => {
+        if (error) {
+          console.error("Could not save location name:", error.message);
+          if (ws.readyState === 1) {
+            ws.send(JSON.stringify({ type: "notice", text: "Could not save the location name." }));
+          }
+          return;
+        }
+        locationNames = Object.assign(Object.create(null), nextNames);
+        broadcast();
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: "notice", text: name ? "Location renamed." : "Location name reset." }));
+        }
+      });
       return;
     }
 
