@@ -66,7 +66,9 @@ button.big .ic{width:22px;height:22px}
 .alert-settings{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
 .alert-settings button{padding:8px 10px;font-size:12px}
 .alert-settings button.ghost{background:var(--card);color:var(--text);border-color:var(--border)}
+.alert-settings .choose-alarm{display:inline-flex;align-items:center;justify-content:center;padding:8px 10px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
 .alert-settings .sub{flex:1 1 100%}
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .rename{padding:7px 9px;font-size:12px}
 .ev{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);align-items:flex-start}
 .ev:last-child{border-bottom:0}
@@ -109,9 +111,9 @@ button.big .ic{width:22px;height:22px}
   <h2>Alerts on this device</h2>
   <div class="card"><div id="alerts"></div>
     <div class="alert-settings">
-      <button type="button" data-act="choose-alarm">Choose alarm sound</button>
+      <label class="choose-alarm" for="alarmFile">Choose alarm sound</label>
       <button type="button" class="ghost" data-act="reset-alarm">Use default sound</button>
-      <input id="alarmFile" type="file" accept="audio/*" hidden>
+      <input id="alarmFile" class="visually-hidden" type="file" accept="audio/*">
       <div class="sub" id="alarmSoundName">Default alarm sound · uploaded sounds are saved only in this browser</div>
     </div>
   </div>
@@ -428,7 +430,6 @@ document.addEventListener("click",e=>{
   else if(act==="enable") enableAlerts();
   else if(act==="test") testAlarm();
   else if(act==="silence") silence();
-  else if(act==="choose-alarm") $("alarmFile").click();
   else if(act==="reset-alarm"){
     removeCustomAlarm().then(()=>{
       if(customAlarmUrl)URL.revokeObjectURL(customAlarmUrl);
